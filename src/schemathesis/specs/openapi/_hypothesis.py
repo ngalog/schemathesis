@@ -14,6 +14,7 @@ from ...exceptions import InvalidSchema
 from ...hooks import GLOBAL_HOOK_DISPATCHER, HookContext, HookDispatcher
 from ...models import Case, Endpoint
 from ...stateful import Feedback
+from .negative import negative_schema
 
 PARAMETERS = frozenset(("path_parameters", "headers", "cookies", "query", "body", "form_data"))
 SLASH = "/"
@@ -124,17 +125,20 @@ def prepare_headers_schema(value: Dict[str, Any]) -> Dict[str, Any]:
 
 def prepare_strategy(
     parameter: str,
-    value: Dict[str, Any],
+    schema: Dict[str, Any],
     map_func: Optional[Callable],
     data_generation_method: DataGenerationMethod = DataGenerationMethod.default(),
 ) -> st.SearchStrategy:
     """Create a strategy for a schema and add location-specific filters & maps."""
     if parameter in ("headers", "cookies"):
-        value = prepare_headers_schema(value)
+        schema = prepare_headers_schema(schema)
     if parameter == "form_data":
-        value.setdefault("type", "object")
-    to_strategy = {DataGenerationMethod.positive: make_positive_strategy}[data_generation_method]
-    strategy = to_strategy(value)
+        schema.setdefault("type", "object")
+    to_strategy = {
+        DataGenerationMethod.positive: make_positive_strategy,
+        DataGenerationMethod.negative: make_negative_strategy,
+    }[data_generation_method]
+    strategy = to_strategy(schema, parameter)
     if map_func is not None:
         strategy = strategy.map(map_func)
     if parameter == "path_parameters":
@@ -148,8 +152,12 @@ def prepare_strategy(
     return strategy
 
 
-def make_positive_strategy(schema: Dict[str, Any]) -> st.SearchStrategy:
+def make_positive_strategy(schema: Dict[str, Any], parameter: str) -> st.SearchStrategy:
     return from_schema(schema, custom_formats=STRING_FORMATS)
+
+
+def make_negative_strategy(schema: Dict[str, Any], parameter: str) -> st.SearchStrategy:
+    return negative_schema(schema, parameter=parameter, custom_formats=STRING_FORMATS)
 
 
 def filter_path_parameters(parameters: Dict[str, Any]) -> bool:
