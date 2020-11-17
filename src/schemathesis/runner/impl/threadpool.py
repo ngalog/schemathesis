@@ -8,6 +8,7 @@ import attr
 import hypothesis
 
 from ..._hypothesis import make_test_or_exception
+from ...constants import DEFAULT_STATEFUL_RECURSION_LIMIT
 from ...models import CheckFunction, TestResultSet
 from ...stateful import Feedback, Stateful
 from ...targets import Target
@@ -27,11 +28,10 @@ def _run_task(
     seed: Optional[int],
     results: TestResultSet,
     stateful: Optional[Stateful],
-    stateful_recursion_limit: int,
     **kwargs: Any,
 ) -> None:
     def _run_tests(maker: Callable, recursion_level: int = 0) -> None:
-        if recursion_level > stateful_recursion_limit:
+        if recursion_level > DEFAULT_STATEFUL_RECURSION_LIMIT:
             return
         for _endpoint, data_generation_method, test in maker(test_template, settings, seed):
             feedback = Feedback(stateful, _endpoint)
@@ -69,7 +69,6 @@ def thread_task(
     seed: Optional[int],
     results: TestResultSet,
     stateful: Optional[Stateful],
-    stateful_recursion_limit: int,
     kwargs: Any,
 ) -> None:
     """A single task, that threads do.
@@ -88,7 +87,6 @@ def thread_task(
             seed,
             results,
             stateful=stateful,
-            stateful_recursion_limit=stateful_recursion_limit,
             session=session,
             headers=headers,
             **kwargs,
@@ -104,7 +102,6 @@ def wsgi_thread_task(
     seed: Optional[int],
     results: TestResultSet,
     stateful: Optional[Stateful],
-    stateful_recursion_limit: int,
     kwargs: Any,
 ) -> None:
     _run_task(
@@ -117,7 +114,6 @@ def wsgi_thread_task(
         seed,
         results,
         stateful=stateful,
-        stateful_recursion_limit=stateful_recursion_limit,
         **kwargs,
     )
 
@@ -132,7 +128,6 @@ def asgi_thread_task(
     seed: Optional[int],
     results: TestResultSet,
     stateful: Optional[Stateful],
-    stateful_recursion_limit: int,
     kwargs: Any,
 ) -> None:
     _run_task(
@@ -145,7 +140,6 @@ def asgi_thread_task(
         seed,
         results,
         stateful=stateful,
-        stateful_recursion_limit=stateful_recursion_limit,
         headers=headers,
         **kwargs,
     )
@@ -239,7 +233,6 @@ class ThreadPoolRunner(BaseRunner):
             "seed": self.seed,
             "results": results,
             "stateful": self.stateful,
-            "stateful_recursion_limit": self.stateful_recursion_limit,
             "kwargs": {
                 "request_timeout": self.request_timeout,
                 "request_tls_verify": self.request_tls_verify,
@@ -263,7 +256,6 @@ class ThreadPoolWSGIRunner(ThreadPoolRunner):
             "seed": self.seed,
             "results": results,
             "stateful": self.stateful,
-            "stateful_recursion_limit": self.stateful_recursion_limit,
             "kwargs": {
                 "auth": self.auth,
                 "auth_type": self.auth_type,
@@ -289,7 +281,6 @@ class ThreadPoolASGIRunner(ThreadPoolRunner):
             "seed": self.seed,
             "results": results,
             "stateful": self.stateful,
-            "stateful_recursion_limit": self.stateful_recursion_limit,
             "kwargs": {
                 "store_interactions": self.store_interactions,
                 "max_response_time": self.max_response_time,
