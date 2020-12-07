@@ -9,7 +9,6 @@ import hypothesis
 
 from ..._hypothesis import make_test_or_exception
 from ...models import CheckFunction, TestResultSet
-from ...stateful import Stateful
 from ...targets import Target
 from ...types import RawAuth
 from ...utils import capture_hypothesis_output, get_requests_auth
@@ -26,13 +25,14 @@ def _run_task(
     settings: hypothesis.settings,
     seed: Optional[int],
     results: TestResultSet,
-    stateful: Optional[Stateful],
     **kwargs: Any,
 ) -> None:
-    def _run_tests(maker: Callable) -> None:
-        for _endpoint, data_generation_method, test in maker(test_template, settings, seed):
+    with capture_hypothesis_output():
+        while not tasks_queue.empty():
+            endpoint, data_generation_method = tasks_queue.get()
+            test = make_test_or_exception(endpoint, test_template, settings, seed)
             for event in run_test(
-                _endpoint,
+                endpoint,
                 test,
                 checks,
                 data_generation_method,
@@ -41,13 +41,6 @@ def _run_task(
                 **kwargs,
             ):
                 events_queue.put(event)
-
-    with capture_hypothesis_output():
-        while not tasks_queue.empty():
-            endpoint, data_generation_method = tasks_queue.get()
-            items = (endpoint, data_generation_method, make_test_or_exception(endpoint, test_template, settings, seed))
-            # This lambda ignores the input arguments to support the same interface for `feedback.get_stateful_tests`
-            _run_tests(lambda *_: (items,))
 
 
 def thread_task(
@@ -61,7 +54,6 @@ def thread_task(
     headers: Optional[Dict[str, Any]],
     seed: Optional[int],
     results: TestResultSet,
-    stateful: Optional[Stateful],
     kwargs: Any,
 ) -> None:
     """A single task, that threads do.
@@ -79,7 +71,6 @@ def thread_task(
             settings,
             seed,
             results,
-            stateful=stateful,
             session=session,
             headers=headers,
             **kwargs,
@@ -94,7 +85,6 @@ def wsgi_thread_task(
     settings: hypothesis.settings,
     seed: Optional[int],
     results: TestResultSet,
-    stateful: Optional[Stateful],
     kwargs: Any,
 ) -> None:
     _run_task(
@@ -106,7 +96,6 @@ def wsgi_thread_task(
         settings,
         seed,
         results,
-        stateful=stateful,
         **kwargs,
     )
 
@@ -120,7 +109,6 @@ def asgi_thread_task(
     headers: Optional[Dict[str, Any]],
     seed: Optional[int],
     results: TestResultSet,
-    stateful: Optional[Stateful],
     kwargs: Any,
 ) -> None:
     _run_task(
@@ -132,7 +120,6 @@ def asgi_thread_task(
         settings,
         seed,
         results,
-        stateful=stateful,
         headers=headers,
         **kwargs,
     )
@@ -225,7 +212,6 @@ class ThreadPoolRunner(BaseRunner):
             "headers": self.headers,
             "seed": self.seed,
             "results": results,
-            "stateful": self.stateful,
             "kwargs": {
                 "request_timeout": self.request_timeout,
                 "request_tls_verify": self.request_tls_verify,
@@ -248,7 +234,6 @@ class ThreadPoolWSGIRunner(ThreadPoolRunner):
             "settings": self.hypothesis_settings,
             "seed": self.seed,
             "results": results,
-            "stateful": self.stateful,
             "kwargs": {
                 "auth": self.auth,
                 "auth_type": self.auth_type,
@@ -273,7 +258,6 @@ class ThreadPoolASGIRunner(ThreadPoolRunner):
             "headers": self.headers,
             "seed": self.seed,
             "results": results,
-            "stateful": self.stateful,
             "kwargs": {
                 "store_interactions": self.store_interactions,
                 "max_response_time": self.max_response_time,
